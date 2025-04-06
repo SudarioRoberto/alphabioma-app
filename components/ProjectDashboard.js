@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { Feather } from '@expo/vector-icons';
 
 const steps = [
   { label: 'Projeto gerado', description: 'Estamos preparando seu material de coleta.', icon: require('../assets/icons/project.png') },
@@ -23,14 +24,25 @@ const statusIndex = steps.reduce((acc, step, index) => {
   return acc;
 }, {});
 
-const ProjectDashboard = ({ projectId, onExit }) => {
-  const [currentStatus, setCurrentStatus] = useState('');
+const ProjectDashboard = ({ projectId, projectName, currentStatus, samples, canAddSamples, onAddSamples, onViewSamples, onCanAddSamplesChange, onExit }) => {
+  const [internalStatus, setInternalStatus] = useState(currentStatus || '');
   const [loading, setLoading] = useState(true);
 
   const fetchProjectStatus = async () => {
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
+    
     const { data, error } = await supabase.from('projects').select('status').eq('project_id', projectId).single();
     if (!error && data?.status) {
-      setCurrentStatus(data.status);
+      setInternalStatus(data.status);
+      
+      // Atualizar o status no componente pai
+      const allowAddSamples = data.status === 'Material entregue' || data.status === 'Amostras coletadas';
+      if (onCanAddSamplesChange) {
+        onCanAddSamplesChange(allowAddSamples);
+      }
     }
     setLoading(false);
   };
@@ -41,12 +53,18 @@ const ProjectDashboard = ({ projectId, onExit }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const currentIndex = statusIndex[currentStatus] ?? 0;
+  // Usar o status interno ou o recebido por prop
+  const statusToDisplay = currentStatus || internalStatus;
+  const currentIndex = statusIndex[statusToDisplay] ?? 0;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Status do Projeto</Text>
-      {loading ? <ActivityIndicator size="large" color="#1d4ed8" style={{ marginTop: 50 }} /> : (
+      <Text style={styles.title}>{projectName || 'Projeto'}</Text>
+      <Text style={styles.subtitle}>Status do Projeto</Text>
+      
+      {loading ? (
+        <ActivityIndicator size="large" color="#1d4ed8" style={{ marginTop: 50 }} />
+      ) : (
         steps.map((step, index) => {
           const statusColor =
             index < currentIndex ? '#22c55e' :
@@ -66,6 +84,31 @@ const ProjectDashboard = ({ projectId, onExit }) => {
           );
         })
       )}
+      
+      {canAddSamples && (
+        <TouchableOpacity 
+          onPress={onAddSamples} 
+          style={styles.actionButton}
+        >
+          <View style={styles.buttonContent}>
+            <Feather name="plus-circle" size={20} color="#fff" />
+            <Text style={styles.actionButtonText}>Adicionar Amostras</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+      
+      {samples && samples.length > 0 && (
+        <TouchableOpacity 
+          onPress={onViewSamples} 
+          style={[styles.actionButton, {backgroundColor: '#4b5563'}]}
+        >
+          <View style={styles.buttonContent}>
+            <Feather name="list" size={20} color="#fff" />
+            <Text style={styles.actionButtonText}>Ver Amostras ({samples.length})</Text>
+          </View>
+        </TouchableOpacity>
+      )}
+      
       <TouchableOpacity onPress={onExit} style={styles.button}>
         <Text style={styles.buttonText}>Sair</Text>
       </TouchableOpacity>
@@ -84,6 +127,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     color: '#1d4ed8',
+    marginBottom: 10,
+    textAlign: 'center'
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#4b5563',
     marginBottom: 20,
     textAlign: 'center'
   },
@@ -129,5 +178,33 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontWeight: 'bold'
+  },
+  actionButton: {
+    backgroundColor: '#22c55e',
+    padding: 15,
+    borderRadius: 8,
+    marginTop: 15,
+    marginBottom: 5,
+    width: '100%',
+    maxWidth: 300,
+    alignSelf: 'center'
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 10
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  exitButton: {
+    backgroundColor: '#ef4444',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 10
   }
 });
