@@ -6,7 +6,7 @@ import { StyleSheet, Text, View, TextInput, FlatList, TouchableOpacity, Image, M
   Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { Camera } from 'expo-camera';
+import BarCodeScanner from './components/BarCodeScanner';
 import { supabase } from './lib/supabase';
 import ProjectDashboard from './components/ProjectDashboard';
 import { Feather } from '@expo/vector-icons';
@@ -134,98 +134,192 @@ export default function App() {
     }
   };
 
-  const addSample = async () => {
-    const { sampleId, animal, treatment } = newSample;
+  // Modifique a função addSample() no App.js
+const addSample = async () => {
+  const { sampleId, animal, treatment } = newSample;
+  
+  // Validar campos obrigatórios
+  if (!sampleId || !animal || !treatment) {
+    Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios.');
+    return;
+  }
+  
+  setIsLoading(true);
+  
+  try {
+    // Primeiro, verificar se a amostra existe e está disponível
+    const { data: existingSample, error: checkError } = await supabase
+      .from('generic_samples')
+      .select('*')
+      .eq('sample_id', sampleId)
+      .single();
     
-    // Validar campos obrigatórios
-    if (!sampleId || !animal || !treatment) {
-      Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios.');
+    // Se ocorrer um erro diferente de "não encontrado", mostrar o erro
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('Erro ao verificar amostra:', checkError);
+      Alert.alert('Erro', 'Não foi possível verificar a amostra.');
+      setIsLoading(false);
       return;
     }
     
-    setIsLoading(true);
+    // Se a amostra não existir ou não estiver disponível, mostrar erro
+    if (!existingSample) {
+      Alert.alert('Erro', 'Esta amostra não existe no sistema.');
+      setIsLoading(false);
+      return;
+    }
     
-    try {
-      // Buscar o projeto atual
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select('id, status, sample_count')
-        .eq('project_id', projectId)
-        .single();
-  
-      if (projectError) {
-        console.error('Erro ao buscar projeto:', projectError);
-        Alert.alert('Erro', 'Não foi possível encontrar o projeto.');
-        setIsLoading(false);
-        return;
-      }
-      
-      if (projectData.status !== 'Material entregue') {
-        Alert.alert('Erro', 'Só é possível adicionar amostras quando o material for entregue.');
-        setIsLoading(false);
-        return;
-      }
-  
-      // Inserir na tabela generic_samples
-      const { data, error } = await supabase
-        .from('generic_samples')
-        .insert({
-          sample_id: sampleId,
-          project_id: projectData.id,
-          animal_id: animal,
-          treatment: treatment,
-          observation: newSample.observation || '',
-          status: 'Coletado',
-          collection_date: new Date().toISOString()
-        })
-        .select();
-  
-      if (error) {
-        console.error('Erro ao adicionar amostra:', error);
-        Alert.alert('Erro', 'Não foi possível adicionar a amostra');
-        setIsLoading(false);
-        return;
-      }
-  
-      // Atualizar contagem de amostras no projeto
-      const sampleCount = projectData.sample_count || 0;
-      await supabase
-        .from('projects')
-        .update({ 
-          sample_count: sampleCount + 1 
-        })
-        .eq('id', projectData.id);
-  
-      // Criar uma nova amostra para adicionar à lista
-      const newSampleItem = {
-        id: sampleId,
-        projectId,
-        realProjectId: projectData.id,
-        animal,
-        treatment,
+    if (existingSample.status !== 'Disponível') {
+      Alert.alert('Erro', 'Esta amostra não está disponível para uso.');
+      setIsLoading(false);
+      return;
+    }
+    
+    // Buscar o projeto atual
+    const { data: projectData, error: projectError } = await supabase
+      .from('projects')
+      .select('id, status, sample_count')
+      .eq('project_id', projectId)
+      .single();
+    
+    if (projectError) {
+      console.error('Erro ao buscar projeto:', projectError);
+      Alert.alert('Erro', 'Não foi possível encontrar o projeto.');
+      setIsLoading(false);
+      return;
+    }
+    
+    // Atualizar a amostra existente em vez de criar uma nova
+    const { data, error } = await supabase
+      .from('generic_samples')
+      .update({
+        project_id: projectData.id,
+        animal_id: animal,
+        treatment: treatment,
         observation: newSample.observation || '',
         status: 'Coletado',
-        date: new Date().toISOString(),
-        synced: true
-      };
-  
-      // Atualizar estado local
-      const updatedSamples = [...samples, newSampleItem];
-      setSamples(updatedSamples);
-      saveSamples(updatedSamples);
+        collection_date: new Date().toISOString()
+      })
+      .eq('sample_id', sampleId)
+      .select();
       
-      // Limpar o formulário
-      setNewSample({ animal: '', treatment: '', sampleId: '', observation: '' });
-      
-      // Mostrar feedback
-      setSuccessFeedback(true);
-    } catch (error) {
-      console.error('Erro completo:', error);
-      Alert.alert('Erro', 'Ocorreu um problema ao adicionar a amostra');
-    } finally {
+    if (error) {
+      console.error('Erro ao atualizar amostra:', error);
+      Alert.alert('Erro', 'Não foi possível adicionar a amostra');
       setIsLoading(false);
+      return;
     }
-  };
+    
+    // Atualizar contagem de amostras no projeto
+    const sampleCount = projectData.sample_count || 0;
+    await supabase
+      .from('projects')
+      .update({ 
+        sample_count: sampleCount + 1 
+      })
+      .eq('id', projectData.id);
+    
+    // Criar uma nova amostra para adicionar à lista
+    const newSampleItem = {
+      id: sampleId,
+      projectId,
+      realProjectId: projectData.id,
+      animal,
+      treatment,
+      observation: newSample.observation || '',
+      status: 'Coletado',
+      date: new Date().toISOString(),
+      synced: true
+    };
+    
+    // Atualizar estado local
+    const updatedSamples = [...samples, newSampleItem];
+    setSamples(updatedSamples);
+    saveSamples(updatedSamples);
+    
+    // Limpar o formulário
+    setNewSample({ animal: '', treatment: '', sampleId: '', observation: '' });
+    
+    // Mostrar feedback
+    setSuccessFeedback(true);
+  } catch (error) {
+    console.error('Erro completo:', error);
+    Alert.alert('Erro', 'Ocorreu um problema ao adicionar a amostra');
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+const removeSample = async (sampleId) => {
+  // Confirmação antes de remover
+  Alert.alert(
+    "Remover Amostra",
+    "Tem certeza que deseja remover esta amostra do projeto?",
+    [
+      {
+        text: "Cancelar",
+        style: "cancel"
+      },
+      {
+        text: "Remover",
+        onPress: async () => {
+          setIsLoading(true);
+          try {
+            // Atualizar status da amostra para "Disponível" no Supabase
+            const { error } = await supabase
+              .from('generic_samples')
+              .update({
+                project_id: null,
+                animal_id: null,
+                treatment: null,
+                observation: null,
+                status: 'Disponível',
+                collection_date: null
+              })
+              .eq('sample_id', sampleId);
+
+            if (error) {
+              console.error('Erro ao remover amostra:', error);
+              Alert.alert('Erro', 'Não foi possível remover a amostra');
+              setIsLoading(false);
+              return;
+            }
+
+            // Atualizar contagem de amostras no projeto
+            const { data: projectData } = await supabase
+              .from('projects')
+              .select('id, sample_count')
+              .eq('project_id', projectId)
+              .single();
+
+            if (projectData) {
+              const sampleCount = projectData.sample_count || 0;
+              await supabase
+                .from('projects')
+                .update({ 
+                  sample_count: Math.max(0, sampleCount - 1) 
+                })
+                .eq('id', projectData.id);
+            }
+
+            // Remover da lista local
+            const updatedSamples = samples.filter(sample => sample.id !== sampleId);
+            setSamples(updatedSamples);
+            saveSamples(updatedSamples);
+
+            // Mostrar feedback
+            setSuccessFeedback(true);
+          } catch (error) {
+            console.error('Erro completo:', error);
+            Alert.alert('Erro', 'Ocorreu um problema ao remover a amostra');
+          } finally {
+            setIsLoading(false);
+          }
+        }
+      }
+    ]
+  );
+};
 
   const updateSample = async () => {
     if (!editingSample) return;
@@ -361,9 +455,14 @@ export default function App() {
     >
       <View style={styles.sampleHeader}>
         <Text style={styles.sampleId}>{item.id}</Text>
-        <TouchableOpacity onPress={() => openEditModal(item)}>
-          <Feather name="edit-2" size={18} color="#1d4ed8" />
-        </TouchableOpacity>
+        <View style={styles.actionButtons}>
+          <TouchableOpacity onPress={() => openEditModal(item)} style={styles.actionButton}>
+            <Feather name="edit-2" size={18} color="#1d4ed8" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => removeSample(item.id)} style={styles.actionButton}>
+            <Feather name="trash-2" size={18} color="#ef4444" />
+          </TouchableOpacity>
+        </View>
       </View>
       <View style={styles.sampleDetails}>
         <Text><Text style={styles.labelText}>Animal:</Text> {item.animal}</Text>
@@ -613,29 +712,19 @@ if (!addSampleMode) {
         </Animated.View>
       )}
 
-// E substitua o código do Modal do scanner por:
-<Modal visible={scannerVisible} animationType="slide">
-  <View style={{ flex: 1 }}>
-    <Camera 
-      style={{ flex: 1 }} 
-      type="back"  // Usar string literal em vez de constante
-      onBarCodeScanned={handleBarCodeScanned}
-      barCodeScannerSettings={{
-        barCodeTypes: ['qr', 'datamatrix']
-      }}
-    />
-    <TouchableOpacity 
-      onPress={() => setScannerVisible(false)} 
-      style={styles.closeButton}
-    >
-      <Feather name="x-circle" size={24} color="#fff" />
-      <Text style={styles.closeButtonText}>Cancelar</Text>
-    </TouchableOpacity>
-  </View>
-</Modal>
+      {/* Modal do scanner */}
+      {scannerVisible && (
+        <BarCodeScanner 
+          visible={scannerVisible}
+          onClose={() => setScannerVisible(false)}
+          onScan={handleBarCodeScanned}
+          hasPermission={hasPermission}
+        />
+      )}
     </View>
-  ); // Certifique-se de que há um parêntese fechando o return aqui
-} // Certifique-se de que há uma chave fechando a função App aqui
+  ); // Fim do return do App
+} // Fim da função App
+
 
 const styles = StyleSheet.create({
   container: { 
@@ -938,5 +1027,12 @@ const styles = StyleSheet.create({
     height: 300, 
     resizeMode: 'contain', 
     marginBottom: 0.001
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionButton: {
+    padding: 6,
   },
 });
