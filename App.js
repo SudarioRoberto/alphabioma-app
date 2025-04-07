@@ -30,6 +30,10 @@ export default function App() {
   const [addSampleMode, setAddSampleMode] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [projectData, setProjectData] = useState(null);
+  const [password, setPassword] = useState('');
+  const [forgotPasswordModalVisible, setForgotPasswordModalVisible] = useState(false);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -80,61 +84,77 @@ export default function App() {
 
   const validateProject = async () => {
     setIsLoading(true);
-    const { data, error } = await supabase.from('projects').select('*').eq('project_id', projectId);
-    if (error || !data || data.length === 0) {
-      Alert.alert('Erro', 'Projeto não encontrado. Verifique o Project ID e tente novamente.');
-      setIsAuthenticated(false);
+    try {
+      // Verificar o projeto e as credenciais
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('project_id', projectId)
+        .single();
+      
+      if (error || !data) {
+        Alert.alert('Erro', 'Projeto não encontrado. Verifique o ID do projeto e tente novamente.');
+        setIsAuthenticated(false);
+        setIsLoading(false);
+        return;
+      }
+      
+      // Em vez de autenticar imediatamente, mostrar o modal de senha
+      setProjectData(data); // Salve os dados do projeto em um estado
+      setPasswordModalVisible(true); // Mostre o modal de senha
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Erro ao validar projeto:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao tentar fazer login. Tente novamente mais tarde.');
+      setIsLoading(false);
+    }
+  };
+  
+  // Nova função para verificar a senha
+  // Função simplificada para verificar a senha no app (chamando o mesmo endpoint da API)
+const verifyPassword = async (password) => {
+  setIsLoading(true);
+  try {
+    // Chamada à API para verificar a senha
+    const response = await fetch('https://sua-api.example.com/api/client-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, password })
+    });
+    
+    const result = await response.json();
+    
+    if (!response.ok) {
+      Alert.alert('Erro', result.message || 'Senha incorreta');
       setIsLoading(false);
       return;
     }
     
-    setProjectStatus(data[0].status);
-    setProjectName(data[0].name || 'Projeto');
+    // Login bem-sucedido
+    setProjectStatus(projectData.status);
+    setProjectName(projectData.name || 'Projeto');
     
-    // Verifique e configure corretamente a flag canAddSamples
-    const status = data[0].status;
+    // Verificar se pode adicionar amostras
+    const status = projectData.status;
     const allowAddSamples = status === 'Material entregue' || status === 'Amostras coletadas';
     setCanAddSamples(allowAddSamples);
     
-    setRealProjectId(data[0].id);
+    setRealProjectId(projectData.id);
     setIsAuthenticated(true);
+    setPasswordModalVisible(false);
     
-    // Sempre carrega o dashboard primeiro
+    // Carregar dashboard
     setAddSampleMode(false);
     
-    // Carregar as amostras já adicionadas para este projeto
-    loadProjectSamples(data[0].id);
+    // Carregar as amostras
+    loadProjectSamples(projectData.id);
+  } catch (error) {
+    console.error('Erro ao verificar senha:', error);
+    Alert.alert('Erro', 'Ocorreu um erro ao tentar fazer login');
+  } finally {
     setIsLoading(false);
-  };
-  
-  const loadProjectSamples = async (projectUuid) => {
-    try {
-      const { data: projectSamples, error } = await supabase
-        .from('generic_samples')
-        .select('*')
-        .eq('project_id', projectUuid);
-      
-      if (!error && projectSamples) {
-        // Converter as amostras do banco para o formato usado no app
-        const formattedSamples = projectSamples.map(sample => ({
-          id: sample.sample_id,
-          projectId,
-          realProjectId: projectUuid,
-          animal: sample.animal_id,
-          treatment: sample.treatment,
-          observation: sample.observation || '',
-          status: sample.status,
-          date: sample.collection_date,
-          synced: true
-        }));
-        
-        setSamples(formattedSamples);
-        saveSamples(formattedSamples);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar amostras do projeto:', error);
-    }
-  };
+  }
+};
 
   // Modifique a função addSample() no App.js
 const addSample = async () => {
@@ -713,6 +733,136 @@ if (!addSampleMode) {
           <Text style={styles.successText}>Operação realizada com sucesso!</Text>
         </Animated.View>
       )}
+      {/* Modal de senha */}
+<Modal
+  visible={passwordModalVisible}
+  transparent={true}
+  animationType="slide"
+  onRequestClose={() => setPasswordModalVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Login do Projeto</Text>
+        <TouchableOpacity onPress={() => {
+          setPasswordModalVisible(false);
+          setPassword('');
+        }}>
+          <Feather name="x" size={24} color="#4b5563" />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.projectIdText}>
+          Projeto: {projectId}
+        </Text>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Senha</Text>
+          <TextInput
+            style={styles.input}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Digite sua senha"
+            secureTextEntry
+          />
+        </View>
+        
+        <TouchableOpacity 
+          style={styles.forgotButton}
+          onPress={() => {
+            setPasswordModalVisible(false);
+            setForgotPasswordModalVisible(true);
+          }}
+        >
+          <Text style={styles.forgotButtonText}>Esqueceu sua senha?</Text>
+        </TouchableOpacity>
+        
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => {
+              setPasswordModalVisible(false);
+              setPassword('');
+            }}
+          >
+            <Text style={styles.cancelButtonText}>Cancelar</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => verifyPassword(password)}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text style={styles.loginButtonText}>Entrar</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </View>
+</Modal>
+
+{/* Modal de recuperação de senha */}
+<Modal
+  visible={forgotPasswordModalVisible}
+  transparent={true}
+  animationType="slide"
+  onRequestClose={() => setForgotPasswordModalVisible(false)}
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+      <View style={styles.modalHeader}>
+        <Text style={styles.modalTitle}>Recuperar Senha</Text>
+        <TouchableOpacity onPress={() => setForgotPasswordModalVisible(false)}>
+          <Feather name="x" size={24} color="#4b5563" />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.modalBody}>
+        <Text style={styles.modalText}>
+          Digite o email associado ao projeto para receber um link de recuperação de senha.
+        </Text>
+        
+        <View style={styles.inputGroup}>
+          <Text style={styles.inputLabel}>Email</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Digite seu email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+        </View>
+        
+        <View style={styles.modalActions}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => setForgotPasswordModalVisible(false)}
+          >
+            <Text style={styles.cancelButtonText}>Cancelar</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={styles.loginButton}
+            onPress={() => {
+              // Implementar lógica de recuperação de senha
+              Alert.alert(
+                "Email enviado", 
+                "Instruções de recuperação de senha foram enviadas para o seu email."
+              );
+              setForgotPasswordModalVisible(false);
+            }}
+          >
+            <Text style={styles.loginButtonText}>Enviar</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  </View>
+</Modal>
 
       {/* Modal do scanner */}
       {scannerVisible && (
@@ -1037,4 +1187,39 @@ const styles = StyleSheet.create({
   actionButton: {
     padding: 6,
   },
+  // Estilos dos modais
+projectIdText: {
+  fontSize: 16,
+  fontWeight: 'bold',
+  marginBottom: 20,
+  color: '#4b5563'
+},
+forgotButton: {
+  alignSelf: 'flex-end',
+  marginTop: 4,
+  marginBottom: 16
+},
+forgotButtonText: {
+  color: '#1d4ed8',
+  fontSize: 14
+},
+loginButton: {
+  backgroundColor: '#1d4ed8',
+  paddingVertical: 12,
+  paddingHorizontal: 16,
+  borderRadius: 8,
+  alignItems: 'center',
+  justifyContent: 'center',
+  minWidth: 100
+},
+loginButtonText: {
+  color: '#fff',
+  fontWeight: 'bold',
+  fontSize: 16
+},
+modalText: {
+  color: '#4b5563',
+  marginBottom: 16,
+  lineHeight: 20
+}
 });
