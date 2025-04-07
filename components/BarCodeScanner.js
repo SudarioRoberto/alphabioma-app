@@ -1,24 +1,61 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Camera } from 'expo-camera';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { CameraView, Camera, useCameraPermissions } from 'expo-camera';
 import { Feather } from '@expo/vector-icons';
 
-const BarCodeScanner = ({ visible, onClose, onScan, hasPermission }) => {
+const BarCodeScanner = ({ visible, onClose, onScan }) => {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [scanned, setScanned] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      await requestPermission();
+    })();
+  }, []);
+
   if (!visible) return null;
-  
+
+  const handleBarCodeScanned = ({ type, data }) => {
+    setScanned(true);
+    onScan({ type, data });
+    onClose();
+  };
+
+  if (!permission) {
+    // Permissões ainda estão carregando
+    return (
+      <View style={styles.container}>
+        <Text>Carregando permissões da câmera...</Text>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.container}>
+        <Text>Precisamos de permissão para acessar a câmera</Text>
+        <TouchableOpacity onPress={requestPermission} style={styles.permissionButton}>
+          <Text>Permitir Acesso</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      {hasPermission === true ? (
-        <Camera 
-          style={styles.camera} 
-          type="back"  
-          onBarCodeScanned={onScan}
-        />
-      ) : (
-        <View style={styles.permissionContainer}>
-          <Text>Sem acesso à câmera</Text>
+      <CameraView
+        style={styles.camera}
+        facing="back"
+        barcodeScannerSettings={{
+          barcodeTypes: ['qr', 'pdf417', 'ean13', 'code128'],
+        }}
+        onBarcodeScanned={!scanned ? handleBarCodeScanned : undefined}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.scanBox} />
         </View>
-      )}
+      </CameraView>
+      
       <TouchableOpacity 
         onPress={onClose} 
         style={styles.closeButton}
@@ -41,12 +78,21 @@ const styles = StyleSheet.create({
     backgroundColor: 'black'
   },
   camera: {
-    flex: 1
-  },
-  permissionContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center'
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  scanBox: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: 'white',
+    backgroundColor: 'transparent'
   },
   closeButton: {
     position: 'absolute',
@@ -63,6 +109,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     marginLeft: 8
+  },
+  permissionButton: {
+    backgroundColor: '#2196F3',
+    padding: 10,
+    borderRadius: 5,
+    marginTop: 10
   }
 });
 

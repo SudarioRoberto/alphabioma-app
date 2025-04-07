@@ -7,6 +7,7 @@ import { StyleSheet, Text, View, TextInput, FlatList, TouchableOpacity, Image, M
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import BarCodeScanner from './components/BarCodeScanner';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from './lib/supabase';
 import ProjectDashboard from './components/ProjectDashboard';
 import { Feather } from '@expo/vector-icons';
@@ -28,6 +29,7 @@ export default function App() {
   const [successFeedback, setSuccessFeedback] = useState(false);
   const [addSampleMode, setAddSampleMode] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
 

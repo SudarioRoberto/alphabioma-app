@@ -33,12 +33,14 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-barcode-scanner"
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "6ada6f41-d3e9-452b-8493-25a5dee81d22"
-      }
-    }
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera",
+          "microphonePermission": "Permitir $(PRODUCT_NAME) acessar seu microfone",
+          "recordAudioAndroid": false
+        }
+      ]
+    ]
   }
 }
