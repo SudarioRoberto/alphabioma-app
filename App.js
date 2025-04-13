@@ -779,7 +779,7 @@ export default function App() {
             loading={isLoading}
             style={styles.addButton}
           />
-        </div>
+        </View>
         
         {samples.length > 0 && (
           <View style={styles.section}>
@@ -860,14 +860,7 @@ export default function App() {
                     outline
                     style={styles.cancelButton}
                   />
-                  
-                  <ModernButton
-                    title="Salvar"
-                    onPress={updateSample}
-                    loading={isLoading}
-                    style={styles.confirmButton}
-                  />
-                </View>
+                                  </View>
               </ScrollView>
             )}
           </View>
@@ -1114,6 +1107,11 @@ const styles = StyleSheet.create({
   },
   feedbackIcon: {
     marginRight: 12,
+  },
+  successText: {
+    color: colors.white,
+    fontWeight: 'bold',
+    fontSize: 16,
   },
   successText: {
     color: colors.white,

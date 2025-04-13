@@ -1,30 +1,29 @@
 {
   "expo": {
-    "name": "sample-tracking-app",
-    "slug": "sample-tracking-app",
+    "name": "AlphaBioma",
+    "slug": "alphabioma-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#003c95"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.sudario.alphabioma",
-      "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
-      }
+      "bundleIdentifier": "com.alphabioma.mobile"
     },
     "android": {
-      "package": "com.sudario.alphabioma",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#003c95"
       },
+      "package": "com.alphabioma.mobile",
       "permissions": [
         "android.permission.CAMERA"
       ]
@@ -36,9 +35,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Permitir $(PRODUCT_NAME) acessar sua câmera",
-          "microphonePermission": "Permitir $(PRODUCT_NAME) acessar seu microfone",
-          "recordAudioAndroid": false
+          "cameraPermission": "Allow AlphaBioma to access your camera",
+          "microphonePermission": false
         }
       ]
     ]
