@@ -1,10 +1,22 @@
+// styles/colors.js - New color scheme matching the website
 export default {
-    primary: '#1d4ed8',     // Azul vibrante
-    secondary: '#22c55e',   // Verde moderno
-    background: '#f4f4f8', // Cinza claro com toque de azul
-    text: '#1f2937',       // Grafite escuro
-    white: '#ffffff',
-    lightGray: '#e5e7eb',
-    darkBlue: '#0f172a'
-  };
+  primary: '#0048b5',
+  primaryDark: '#003c95',
+  primaryLight: '#3533c9',
+  secondary: '#215ec3',
+  accent: '#326bc3',
+  success: '#10b981',
+  error: '#ef4444',
+  warning: '#f59e0b',
+  info: '#3b82f6',
+  background: '#f9fafb',
+  card: '#ffffff',
+  text: '#1f2937',
+  textLight: '#6b7280',
+  border: '#e5e7eb',
+  white: '#ffffff',
+  black: '#000000',
   
+  // Gradients will be handled in the components directly
+  // with linear-gradient
+};

@@ -1,17 +1,38 @@
-// App.js - Versão aprimorada com edição de amostras e UI moderna
+// App.js - Updated with modern UI components
 import 'react-native-url-polyfill/auto';
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, TextInput, FlatList, TouchableOpacity, Image, Modal, 
-  ActivityIndicator, ScrollView, Animated, Alert, Pressable, KeyboardAvoidingView, 
-  Platform } from 'react-native';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  TextInput, 
+  FlatList, 
+  TouchableOpacity, 
+  Image, 
+  Modal, 
+  ActivityIndicator, 
+  ScrollView, 
+  Animated, 
+  Alert, 
+  KeyboardAvoidingView, 
+  Platform,
+  SafeAreaView
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import BarCodeScanner from './components/BarCodeScanner';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { supabase } from './lib/supabase';
-import ProjectDashboard from './components/ProjectDashboard';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 
+// Import new modern components
+import ModernHeader from './components/ModernHeader';
+import ModernButton from './components/ModernButton';
+import SampleCard from './components/SampleCard';
+import ProjectCard from './components/ProjectCard';
+import BarCodeScanner from './components/BarCodeScanner';
+import ProjectDashboard from './components/ProjectDashboard';
+import colors from './styles/colors';
 
 export default function App() {
   const [samples, setSamples] = useState([]);
@@ -25,7 +46,6 @@ export default function App() {
   const [projectStatus, setProjectStatus] = useState('');
   const [canAddSamples, setCanAddSamples] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [hasPermission, setHasPermission] = useState(null);
   const [successFeedback, setSuccessFeedback] = useState(false);
   const [addSampleMode, setAddSampleMode] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -34,24 +54,48 @@ export default function App() {
   const [projectData, setProjectData] = useState(null);
   const [password, setPassword] = useState('');
   const [forgotPasswordModalVisible, setForgotPasswordModalVisible] = useState(false);
+  const [processingLogin, setProcessingLogin] = useState(false);
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     loadSamples();
-    
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    })();
+    checkExistingSession();
     
     const unsubscribe = NetInfo.addEventListener(state => {
       if (state.isConnected) {
         syncUnsyncedSamples();
       }
     });
+    
     return () => unsubscribe();
   }, []);
+  
+  const checkExistingSession = async () => {
+    try {
+      const savedProjectId = await AsyncStorage.getItem('projectId');
+      const savedRealProjectId = await AsyncStorage.getItem('realProjectId');
+      const savedProjectName = await AsyncStorage.getItem('projectName');
+      const savedProjectStatus = await AsyncStorage.getItem('projectStatus');
+      
+      if (savedProjectId && savedRealProjectId) {
+        setProjectId(savedProjectId);
+        setRealProjectId(savedRealProjectId);
+        setProjectName(savedProjectName || 'Meu Projeto');
+        setProjectStatus(savedProjectStatus || 'Projeto gerado');
+        setIsAuthenticated(true);
+        
+        // Check if user can add samples based on status
+        const status = savedProjectStatus || '';
+        const allowAddSamples = status === 'Material entregue' || status === 'Amostras coletadas';
+        setCanAddSamples(allowAddSamples);
+        
+        loadProjectSamples(savedRealProjectId);
+      }
+    } catch (error) {
+      console.error('Error checking existing session:', error);
+    }
+  };
 
   useEffect(() => {
     if (successFeedback) {
@@ -74,18 +118,70 @@ export default function App() {
   }, [successFeedback, fadeAnim]);
 
   const loadSamples = async () => {
-    const data = await AsyncStorage.getItem('samples');
-    if (data) setSamples(JSON.parse(data));
+    try {
+      const data = await AsyncStorage.getItem('samples');
+      if (data) setSamples(JSON.parse(data));
+    } catch (error) {
+      console.error('Error loading samples:', error);
+    }
   };
 
   const saveSamples = async (data) => {
-    await AsyncStorage.setItem('samples', JSON.stringify(data));
+    try {
+      await AsyncStorage.setItem('samples', JSON.stringify(data));
+    } catch (error) {
+      console.error('Error saving samples:', error);
+    }
+  };
+  
+  const loadProjectSamples = async (projectId) => {
+    if (!projectId) return;
+    
+    setIsLoading(true);
+    try {
+      // Fetch samples for the project
+      const { data, error } = await supabase
+        .from('generic_samples')
+        .select('*')
+        .eq('project_id', projectId);
+        
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        // Transform data to match the app's sample format
+        const transformedSamples = data.map(item => ({
+          id: item.sample_id,
+          projectId,
+          realProjectId: projectId,
+          animal: item.animal_id || '',
+          treatment: item.treatment || '',
+          observation: item.observation || '',
+          status: item.status || 'Pendente',
+          date: item.collection_date || new Date().toISOString(),
+          synced: true
+        }));
+        
+        setSamples(transformedSamples);
+        saveSamples(transformedSamples);
+      }
+    } catch (error) {
+      console.error('Error loading project samples:', error);
+      Alert.alert('Erro', 'Não foi possível carregar as amostras do projeto');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const validateProject = async () => {
-    setIsLoading(true);
+    if (!projectId.trim()) {
+      Alert.alert('Erro', 'Por favor, digite o ID do projeto');
+      return;
+    }
+    
+    setProcessingLogin(true);
+    
     try {
-      // Verificar o projeto e as credenciais
+      // Verificar o projeto
       const { data, error } = await supabase
         .from('projects')
         .select('*')
@@ -94,254 +190,221 @@ export default function App() {
       
       if (error || !data) {
         Alert.alert('Erro', 'Projeto não encontrado. Verifique o ID do projeto e tente novamente.');
-        setIsAuthenticated(false);
-        setIsLoading(false);
+        setProcessingLogin(false);
         return;
       }
       
       // Em vez de autenticar imediatamente, mostrar o modal de senha
-      setProjectData(data); // Salve os dados do projeto em um estado
-      setPasswordModalVisible(true); // Mostre o modal de senha
-      setIsLoading(false);
+      setProjectData(data);
+      setPasswordModalVisible(true);
     } catch (error) {
       console.error('Erro ao validar projeto:', error);
       Alert.alert('Erro', 'Ocorreu um erro ao tentar fazer login. Tente novamente mais tarde.');
-      setIsLoading(false);
+    } finally {
+      setProcessingLogin(false);
     }
   };
   
-  // Nova função para verificar a senha
-  // Função simplificada para verificar a senha no app (chamando o mesmo endpoint da API)
-const verifyPassword = async (password) => {
-  setIsLoading(true);
-  try {
-    // Chamada à API para verificar a senha
-    const response = await fetch('https://sua-api.example.com/api/client-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectId, password })
-    });
-    
-    const result = await response.json();
-    
-    if (!response.ok) {
-      Alert.alert('Erro', result.message || 'Senha incorreta');
-      setIsLoading(false);
+  const verifyPassword = async () => {
+    if (!password.trim()) {
+      Alert.alert('Erro', 'Por favor, digite sua senha');
       return;
     }
     
-    // Login bem-sucedido
-    setProjectStatus(projectData.status);
-    setProjectName(projectData.name || 'Projeto');
+    setIsLoading(true);
     
-    // Verificar se pode adicionar amostras
-    const status = projectData.status;
-    const allowAddSamples = status === 'Material entregue' || status === 'Amostras coletadas';
-    setCanAddSamples(allowAddSamples);
-    
-    setRealProjectId(projectData.id);
-    setIsAuthenticated(true);
-    setPasswordModalVisible(false);
-    
-    // Carregar dashboard
-    setAddSampleMode(false);
-    
-    // Carregar as amostras
-    loadProjectSamples(projectData.id);
-  } catch (error) {
-    console.error('Erro ao verificar senha:', error);
-    Alert.alert('Erro', 'Ocorreu um erro ao tentar fazer login');
-  } finally {
-    setIsLoading(false);
-  }
-};
+    try {
+      // Verify password with server
+      const { data, error } = await supabase.rpc('verify_project_password', {
+        p_project_id: projectId,
+        p_password: password
+      });
+      
+      if (error || !data) {
+        Alert.alert('Erro', 'Senha incorreta. Por favor, tente novamente.');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Authentication successful
+      const status = projectData.status || 'Projeto gerado';
+      setProjectStatus(status);
+      setProjectName(projectData.name || 'Projeto');
+      
+      // Check if user can add samples
+      const allowAddSamples = status === 'Material entregue' || status === 'Amostras coletadas';
+      setCanAddSamples(allowAddSamples);
+      
+      setRealProjectId(projectData.id);
+      setIsAuthenticated(true);
+      setPasswordModalVisible(false);
+      
+      // Save session
+      await AsyncStorage.setItem('projectId', projectId);
+      await AsyncStorage.setItem('realProjectId', projectData.id);
+      await AsyncStorage.setItem('projectName', projectData.name || 'Projeto');
+      await AsyncStorage.setItem('projectStatus', status);
+      
+      // Load project samples
+      loadProjectSamples(projectData.id);
+    } catch (error) {
+      console.error('Error verifying password:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao tentar fazer login. Tente novamente mais tarde.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Modifique a função addSample() no App.js
-const addSample = async () => {
-  const { sampleId, animal, treatment } = newSample;
-  
-  // Validar campos obrigatórios
-  if (!sampleId || !animal || !treatment) {
-    Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios.');
-    return;
-  }
-  
-  setIsLoading(true);
-  
-  try {
-    // Primeiro, verificar se a amostra existe e está disponível
-    const { data: existingSample, error: checkError } = await supabase
-      .from('generic_samples')
-      .select('*')
-      .eq('sample_id', sampleId)
-      .single();
+  const addSample = async () => {
+    const { sampleId, animal, treatment } = newSample;
     
-    // Se ocorrer um erro diferente de "não encontrado", mostrar o erro
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error('Erro ao verificar amostra:', checkError);
-      Alert.alert('Erro', 'Não foi possível verificar a amostra.');
-      setIsLoading(false);
+    // Validate required fields
+    if (!sampleId) {
+      Alert.alert('Erro', 'Por favor, escaneie ou digite o ID da amostra.');
       return;
     }
     
-    // Se a amostra não existir ou não estiver disponível, mostrar erro
-    if (!existingSample) {
-      Alert.alert('Erro', 'Esta amostra não existe no sistema.');
-      setIsLoading(false);
+    if (!animal || !treatment) {
+      Alert.alert('Erro', 'Por favor, preencha todos os campos obrigatórios.');
       return;
     }
     
-    if (existingSample.status !== 'Disponível') {
-      Alert.alert('Erro', 'Esta amostra não está disponível para uso.');
-      setIsLoading(false);
-      return;
-    }
+    setIsLoading(true);
     
-    // Buscar o projeto atual
-    const { data: projectData, error: projectError } = await supabase
-      .from('projects')
-      .select('id, status, sample_count')
-      .eq('project_id', projectId)
-      .single();
-    
-    if (projectError) {
-      console.error('Erro ao buscar projeto:', projectError);
-      Alert.alert('Erro', 'Não foi possível encontrar o projeto.');
-      setIsLoading(false);
-      return;
-    }
-    
-    // Atualizar a amostra existente em vez de criar uma nova
-    const { data, error } = await supabase
-      .from('generic_samples')
-      .update({
-        project_id: projectData.id,
-        animal_id: animal,
-        treatment: treatment,
+    try {
+      // First, check if the sample exists and is available
+      const { data: existingSample, error: checkError } = await supabase
+        .from('generic_samples')
+        .select('*')
+        .eq('sample_id', sampleId)
+        .single();
+      
+      // If there's an error other than "not found", show the error
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('Error checking sample:', checkError);
+        Alert.alert('Erro', 'Não foi possível verificar a amostra.');
+        setIsLoading(false);
+        return;
+      }
+      
+      // If the sample doesn't exist or isn't available, show error
+      if (!existingSample) {
+        Alert.alert('Erro', 'Esta amostra não existe no sistema.');
+        setIsLoading(false);
+        return;
+      }
+      
+      if (existingSample.status !== 'Disponível') {
+        Alert.alert('Erro', 'Esta amostra não está disponível para uso.');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Update the sample in the database
+      const { data, error } = await supabase
+        .from('generic_samples')
+        .update({
+          project_id: realProjectId,
+          animal_id: animal,
+          treatment: treatment,
+          observation: newSample.observation || '',
+          status: 'Coletado',
+          collection_date: new Date().toISOString()
+        })
+        .eq('sample_id', sampleId)
+        .select();
+        
+      if (error) {
+        console.error('Error updating sample:', error);
+        Alert.alert('Erro', 'Não foi possível adicionar a amostra');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Create a new sample to add to the list
+      const newSampleItem = {
+        id: sampleId,
+        projectId,
+        realProjectId,
+        animal,
+        treatment,
         observation: newSample.observation || '',
         status: 'Coletado',
-        collection_date: new Date().toISOString()
-      })
-      .eq('sample_id', sampleId)
-      .select();
+        date: new Date().toISOString(),
+        synced: true
+      };
       
-    if (error) {
-      console.error('Erro ao atualizar amostra:', error);
-      Alert.alert('Erro', 'Não foi possível adicionar a amostra');
+      // Update local state
+      const updatedSamples = [...samples, newSampleItem];
+      setSamples(updatedSamples);
+      saveSamples(updatedSamples);
+      
+      // Clear the form
+      setNewSample({ animal: '', treatment: '', sampleId: '', observation: '' });
+      
+      // Show feedback
+      setSuccessFeedback(true);
+    } catch (error) {
+      console.error('Complete error:', error);
+      Alert.alert('Erro', 'Ocorreu um problema ao adicionar a amostra');
+    } finally {
       setIsLoading(false);
-      return;
     }
-    
-    // Atualizar contagem de amostras no projeto
-    const sampleCount = projectData.sample_count || 0;
-    await supabase
-      .from('projects')
-      .update({ 
-        sample_count: sampleCount + 1 
-      })
-      .eq('id', projectData.id);
-    
-    // Criar uma nova amostra para adicionar à lista
-    const newSampleItem = {
-      id: sampleId,
-      projectId,
-      realProjectId: projectData.id,
-      animal,
-      treatment,
-      observation: newSample.observation || '',
-      status: 'Coletado',
-      date: new Date().toISOString(),
-      synced: true
-    };
-    
-    // Atualizar estado local
-    const updatedSamples = [...samples, newSampleItem];
-    setSamples(updatedSamples);
-    saveSamples(updatedSamples);
-    
-    // Limpar o formulário
-    setNewSample({ animal: '', treatment: '', sampleId: '', observation: '' });
-    
-    // Mostrar feedback
-    setSuccessFeedback(true);
-  } catch (error) {
-    console.error('Erro completo:', error);
-    Alert.alert('Erro', 'Ocorreu um problema ao adicionar a amostra');
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
-const removeSample = async (sampleId) => {
-  // Confirmação antes de remover
-  Alert.alert(
-    "Remover Amostra",
-    "Tem certeza que deseja remover esta amostra do projeto?",
-    [
-      {
-        text: "Cancelar",
-        style: "cancel"
-      },
-      {
-        text: "Remover",
-        onPress: async () => {
-          setIsLoading(true);
-          try {
-            // Atualizar status da amostra para "Disponível" no Supabase
-            const { error } = await supabase
-              .from('generic_samples')
-              .update({
-                project_id: null,
-                animal_id: null,
-                treatment: null,
-                observation: null,
-                status: 'Disponível',
-                collection_date: null
-              })
-              .eq('sample_id', sampleId);
-
-            if (error) {
-              console.error('Erro ao remover amostra:', error);
-              Alert.alert('Erro', 'Não foi possível remover a amostra');
-              setIsLoading(false);
-              return;
-            }
-
-            // Atualizar contagem de amostras no projeto
-            const { data: projectData } = await supabase
-              .from('projects')
-              .select('id, sample_count')
-              .eq('project_id', projectId)
-              .single();
-
-            if (projectData) {
-              const sampleCount = projectData.sample_count || 0;
-              await supabase
-                .from('projects')
-                .update({ 
-                  sample_count: Math.max(0, sampleCount - 1) 
+  const removeSample = async (sampleId) => {
+    // Confirmation before removing
+    Alert.alert(
+      "Remover Amostra",
+      "Tem certeza que deseja remover esta amostra do projeto?",
+      [
+        {
+          text: "Cancelar",
+          style: "cancel"
+        },
+        {
+          text: "Remover",
+          onPress: async () => {
+            setIsLoading(true);
+            try {
+              // Update status of the sample to "Available" in Supabase
+              const { error } = await supabase
+                .from('generic_samples')
+                .update({
+                  project_id: null,
+                  animal_id: null,
+                  treatment: null,
+                  observation: null,
+                  status: 'Disponível',
+                  collection_date: null
                 })
-                .eq('id', projectData.id);
+                .eq('sample_id', sampleId);
+
+              if (error) {
+                console.error('Error removing sample:', error);
+                Alert.alert('Erro', 'Não foi possível remover a amostra');
+                setIsLoading(false);
+                return;
+              }
+
+              // Remove from local list
+              const updatedSamples = samples.filter(sample => sample.id !== sampleId);
+              setSamples(updatedSamples);
+              saveSamples(updatedSamples);
+
+              // Show feedback
+              setSuccessFeedback(true);
+            } catch (error) {
+              console.error('Complete error:', error);
+              Alert.alert('Erro', 'Ocorreu um problema ao remover a amostra');
+            } finally {
+              setIsLoading(false);
             }
-
-            // Remover da lista local
-            const updatedSamples = samples.filter(sample => sample.id !== sampleId);
-            setSamples(updatedSamples);
-            saveSamples(updatedSamples);
-
-            // Mostrar feedback
-            setSuccessFeedback(true);
-          } catch (error) {
-            console.error('Erro completo:', error);
-            Alert.alert('Erro', 'Ocorreu um problema ao remover a amostra');
-          } finally {
-            setIsLoading(false);
           }
         }
-      }
-    ]
-  );
-};
+      ]
+    );
+  };
 
   const updateSample = async () => {
     if (!editingSample) return;
@@ -365,13 +428,13 @@ const removeSample = async (sampleId) => {
         .eq('sample_id', id);
         
       if (updateError) {
-        console.error('Erro ao atualizar amostra:', updateError);
+        console.error('Error updating sample:', updateError);
         setIsLoading(false);
         Alert.alert('Erro', 'Não foi possível atualizar a amostra. Tente novamente.');
         return;
       }
       
-      // Atualizar a lista local de amostras
+      // Update the local list of samples
       const updatedSamples = samples.map(sample => 
         sample.id === id ? {...editingSample, synced: true} : sample
       );
@@ -381,10 +444,10 @@ const removeSample = async (sampleId) => {
       setEditingSample(null);
       setEditModalVisible(false);
       
-      // Mostrar feedback
+      // Show feedback
       setSuccessFeedback(true);
     } catch (error) {
-      console.error('Erro ao atualizar amostra:', error);
+      console.error('Error updating sample:', error);
       Alert.alert('Erro', 'Ocorreu um erro ao atualizar a amostra.');
     } finally {
       setIsLoading(false);
@@ -405,12 +468,12 @@ const removeSample = async (sampleId) => {
           .single();
           
         if (fetchError || !sampleData) {
-          console.log(`Erro ao sincronizar ${unsynced[i].id}: Amostra não encontrada`);
+          console.log(`Error syncing ${unsynced[i].id}: Sample not found`);
           continue;
         }
         
         if (sampleData.project_id && sampleData.project_id !== unsynced[i].realProjectId) {
-          console.log(`Erro ao sincronizar ${unsynced[i].id}: Amostra já associada a outro projeto`);
+          console.log(`Error syncing ${unsynced[i].id}: Sample already associated with another project`);
           continue;
         }
         
@@ -425,7 +488,7 @@ const removeSample = async (sampleId) => {
           if (projectData) {
             projectUUID = projectData.id;
           } else {
-            console.log(`Erro ao sincronizar ${unsynced[i].id}: Não foi possível encontrar o UUID do projeto`);
+            console.log(`Error syncing ${unsynced[i].id}: Unable to find project UUID`);
             continue;
           }
         }
@@ -434,7 +497,7 @@ const removeSample = async (sampleId) => {
           .from('generic_samples')
           .update({ 
             project_id: projectUUID,
-            status: 'Em uso',
+            status: 'Coletado',
             animal_id: unsynced[i].animal,
             treatment: unsynced[i].treatment,
             observation: unsynced[i].observation,
@@ -445,10 +508,10 @@ const removeSample = async (sampleId) => {
         if (!updateError) {
           synced[synced.findIndex(s => s.id === unsynced[i].id)].synced = true;
         } else {
-          console.log(`Erro ao sincronizar ${unsynced[i].id}: ${updateError.message}`);
+          console.log(`Error syncing ${unsynced[i].id}: ${updateError.message}`);
         }
       } catch (error) {
-        console.error(`Erro ao sincronizar amostra ${unsynced[i].id}:, error`);
+        console.error(`Error syncing sample ${unsynced[i].id}:`, error);
       }
     }
     
@@ -469,186 +532,273 @@ const removeSample = async (sampleId) => {
     setEditingSample({...sample});
     setEditModalVisible(true);
   };
-
-  const renderSampleItem = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.sampleItem}
-      onPress={() => openEditModal(item)}
-    >
-      <View style={styles.sampleHeader}>
-        <Text style={styles.sampleId}>{item.id}</Text>
-        <View style={styles.actionButtons}>
-          <TouchableOpacity onPress={() => openEditModal(item)} style={styles.actionButton}>
-            <Feather name="edit-2" size={18} color="#1d4ed8" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => removeSample(item.id)} style={styles.actionButton}>
-            <Feather name="trash-2" size={18} color="#ef4444" />
-          </TouchableOpacity>
-        </View>
-      </View>
-      <View style={styles.sampleDetails}>
-        <Text><Text style={styles.labelText}>Animal:</Text> {item.animal}</Text>
-        <Text><Text style={styles.labelText}>Tratamento:</Text> {item.treatment}</Text>
-        {item.observation ? (
-          <Text><Text style={styles.labelText}>Observação:</Text> {item.observation}</Text>
-        ) : null}
-        <Text style={styles.dateText}>Coletado em: {new Date(item.date).toLocaleString()}</Text>
-      </View>
-    </TouchableOpacity>
-  );
+  
+  const logout = async () => {
+    try {
+      // Clear session data
+      await AsyncStorage.removeItem('projectId');
+      await AsyncStorage.removeItem('realProjectId');
+      await AsyncStorage.removeItem('projectName');
+      await AsyncStorage.removeItem('projectStatus');
+      
+      // Reset state
+      setProjectId('');
+      setRealProjectId('');
+      setProjectName('');
+      setProjectStatus('');
+      setIsAuthenticated(false);
+      setSamples([]);
+      setAddSampleMode(false);
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+  };
 
   if (!isAuthenticated) {
     return (
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={50}
-      >
-        <ScrollView 
-          contentContainerStyle={styles.authScrollContainer}
-          keyboardShouldPersistTaps="handled"
+      <SafeAreaView style={styles.safeArea}>
+        <LinearGradient
+          colors={[colors.primaryDark, colors.primary, colors.primaryLight]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.background}
         >
-          <View style={styles.authContainer}>
-            <Image source={require('./assets/image.png')} style={styles.logo} />
-            <Text style={styles.title}>Bem-vindo à AlphaBioma</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Digite o Project ID"
-              value={projectId}
-              onChangeText={setProjectId}
-              placeholderTextColor="#888"
-            />
-            <TouchableOpacity onPress={validateProject} style={styles.button} disabled={isLoading}>
-              {isLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Entrar</Text>}
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-        );
-      }
-    
+          <KeyboardAvoidingView 
+            style={styles.container} 
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            keyboardVerticalOffset={50}
+          >
+            <ScrollView 
+              contentContainerStyle={styles.scrollContainer}
+              keyboardShouldPersistTaps="handled"
+            >
+              <View style={styles.loginCard}>
+                <Image source={require('./assets/icon.png')} style={styles.logo} />
+                <Text style={styles.title}>AlphaBioma</Text>
+                <Text style={styles.subtitle}>Portal do Cliente</Text>
+                
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>ID do Projeto</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Digite o ID do projeto"
+                    placeholderTextColor={colors.textLight}
+                    value={projectId}
+                    onChangeText={setProjectId}
+                  />
+                </View>
+                
+                <ModernButton
+                  title="Entrar"
+                  onPress={validateProject}
+                  loading={processingLogin}
+                  style={styles.loginButton}
+                />
+              </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+          
+          {/* Password Modal */}
+          <Modal
+            visible={passwordModalVisible}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setPasswordModalVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContainer}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Login do Projeto</Text>
+                  <TouchableOpacity 
+                    onPress={() => {
+                      setPasswordModalVisible(false);
+                      setPassword('');
+                    }}
+                  >
+                    <Feather name="x" size={24} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.modalBody}>
+                  <Text style={styles.projectIdText}>
+                    Projeto: {projectId}
+                  </Text>
+                  
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.inputLabel}>Senha</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={password}
+                      onChangeText={setPassword}
+                      placeholder="Digite sua senha"
+                      placeholderTextColor={colors.textLight}
+                      secureTextEntry
+                    />
+                  </View>
+                  
+                  {/* Password recovery (Simplified for mobile) */}
+                  <TouchableOpacity 
+                    style={styles.forgotButton}
+                    onPress={() => {
+                      Alert.alert('Recuperação de Senha', 'Entre em contato com a AlphaBioma para recuperar sua senha.');
+                    }}
+                  >
+                    <Text style={styles.forgotButtonText}>Esqueceu sua senha?</Text>
+                  </TouchableOpacity>
+                  
+                  <View style={styles.modalActions}>
+                    <ModernButton
+                      title="Cancelar"
+                      onPress={() => {
+                        setPasswordModalVisible(false);
+                        setPassword('');
+                      }}
+                      outline
+                      style={styles.cancelButton}
+                    />
+                    
+                    <ModernButton
+                      title="Entrar"
+                      onPress={verifyPassword}
+                      loading={isLoading}
+                      style={styles.confirmButton}
+                    />
+                  </View>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </LinearGradient>
+      </SafeAreaView>
+    );
+  }
 
-if (!addSampleMode) {
+  if (!addSampleMode) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <ModernHeader
+          title={projectName}
+          subtitle="Portal do Cliente"
+          onHelp={() => {
+            Alert.alert(
+              "Ajuda",
+              "Este é o dashboard do seu projeto. Aqui você pode visualizar o status atual, adicionar e gerenciar amostras.",
+              [{ text: "OK" }]
+            );
+          }}
+        />
+        
+        <ProjectDashboard
+          projectId={projectId}
+          projectName={projectName}
+          currentStatus={projectStatus}
+          samples={samples}
+          canAddSamples={canAddSamples}
+          onAddSamples={() => setAddSampleMode(true)}
+          onViewSamples={() => setAddSampleMode(true)}
+          onCanAddSamplesChange={(canAdd) => setCanAddSamples(canAdd)}
+          onExit={logout}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <ProjectDashboard
-        projectId={projectId}
-        projectName={projectName}
-        currentStatus={projectStatus}
-        samples={samples}
-        canAddSamples={canAddSamples}  // Passando a propriedade corretamente
-        onAddSamples={() => setAddSampleMode(true)}
-        onViewSamples={() => setAddSampleMode(true)}
-        onCanAddSamplesChange={(canAdd) => setCanAddSamples(canAdd)}
-        onExit={() => {
-          setIsAuthenticated(false);
-          setProjectId('');
-          setRealProjectId('');
-        }}
+    <SafeAreaView style={styles.safeArea}>
+      <ModernHeader
+        title="Gerenciar Amostras"
+        subtitle={projectName}
+        onBack={() => setAddSampleMode(false)}
       />
-    </View>
-  );
-}
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => setAddSampleMode(false)} style={styles.backButton}>
-          <Feather name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{projectName}</Text>
-        <TouchableOpacity onPress={() => {
-          setIsAuthenticated(false);
-          setProjectId('');
-          setRealProjectId('');
-        }} style={styles.exitButton}>
-          <Feather name="log-out" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
       
       <View style={styles.counterContainer}>
         <Text style={styles.counterText}>
-          Amostras coletadas: {samples.length}
+          {samples.length} {samples.length === 1 ? 'amostra coletada' : 'amostras coletadas'}
         </Text>
       </View>
       
-      <ScrollView>
-        <View style={styles.body}>
-          <Text style={styles.title}>Nova Amostra</Text>
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>ID da Amostra *</Text>
+      <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Nova Amostra</Text>
+          
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>ID da Amostra*</Text>
             <View style={styles.scannerInputContainer}>
               <TextInput 
                 style={styles.scannerInput} 
                 value={newSample.sampleId} 
                 onChangeText={text => setNewSample(prev => ({ ...prev, sampleId: text }))} 
                 placeholder="Escaneie ou digite o ID" 
+                placeholderTextColor={colors.textLight}
               />
               <TouchableOpacity onPress={() => setScannerVisible(true)} style={styles.scanButton}>
-                <Feather name="camera" size={20} color="#fff" />
+                <Feather name="camera" size={20} color={colors.white} />
               </TouchableOpacity>
             </View>
           </View>
           
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>ID do Animal *</Text>
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>ID do Animal*</Text>
             <TextInput 
               style={styles.input} 
               value={newSample.animal} 
               onChangeText={text => setNewSample(prev => ({ ...prev, animal: text }))} 
               placeholder="Digite o ID do animal" 
+              placeholderTextColor={colors.textLight}
             />
           </View>
           
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Tratamento *</Text>
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Tratamento*</Text>
             <TextInput 
               style={styles.input} 
               value={newSample.treatment} 
               onChangeText={text => setNewSample(prev => ({ ...prev, treatment: text }))} 
               placeholder="Digite o tratamento" 
+              placeholderTextColor={colors.textLight}
             />
           </View>
           
-          <View style={styles.inputGroup}>
+          <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Observação</Text>
             <TextInput 
               style={[styles.input, styles.textArea]} 
               value={newSample.observation} 
               onChangeText={text => setNewSample(prev => ({ ...prev, observation: text }))} 
               placeholder="Digite observações adicionais (opcional)" 
+              placeholderTextColor={colors.textLight}
               multiline 
               numberOfLines={3} 
             />
           </View>
           
-          <TouchableOpacity onPress={addSample} style={styles.addButton} disabled={isLoading}>
-            {isLoading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Feather name="plus" size={18} color="#fff" />
-                <Text style={styles.addButtonText}>Adicionar Amostra</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
+          <ModernButton
+            title="Adicionar Amostra"
+            icon={<Feather name="plus" size={18} color={colors.white} />}
+            onPress={addSample}
+            loading={isLoading}
+            style={styles.addButton}
+          />
+        </div>
         
         {samples.length > 0 && (
-          <View style={styles.sampleListContainer}>
+          <View style={styles.section}>
             <Text style={styles.sectionTitle}>Amostras Registradas</Text>
-            <Text style={styles.helpText}>Toque em uma amostra para editá-la</Text>
-            <FlatList
-              data={samples}
-              renderItem={renderSampleItem}
-              keyExtractor={item => item.id}
-              scrollEnabled={false}
-            />
+            <Text style={styles.helpText}>Toque em uma amostra para editar</Text>
+            
+            {samples.map(sample => (
+              <SampleCard
+                key={sample.id}
+                sample={sample}
+                onEdit={openEditModal}
+                onDelete={removeSample}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
 
-      {/* Modal de edição */}
+      {/* Edit Modal */}
       <Modal
         visible={editModalVisible}
         transparent={true}
@@ -660,7 +810,7 @@ if (!addSampleMode) {
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Editar Amostra</Text>
               <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Feather name="x" size={24} color="#4b5563" />
+                <Feather name="x" size={24} color={colors.text} />
               </TouchableOpacity>
             </View>
             
@@ -668,57 +818,55 @@ if (!addSampleMode) {
               <ScrollView style={styles.modalBody}>
                 <Text style={styles.modalSampleId}>ID: {editingSample.id}</Text>
                 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>ID do Animal *</Text>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>ID do Animal*</Text>
                   <TextInput 
                     style={styles.input} 
                     value={editingSample.animal} 
                     onChangeText={text => setEditingSample({...editingSample, animal: text})} 
                     placeholder="Digite o ID do animal" 
+                    placeholderTextColor={colors.textLight}
                   />
                 </View>
                 
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Tratamento *</Text>
+                <View style={styles.inputContainer}>
+                  <Text style={styles.inputLabel}>Tratamento*</Text>
                   <TextInput 
                     style={styles.input} 
                     value={editingSample.treatment} 
                     onChangeText={text => setEditingSample({...editingSample, treatment: text})} 
                     placeholder="Digite o tratamento" 
+                    placeholderTextColor={colors.textLight}
                   />
                 </View>
                 
-                <View style={styles.inputGroup}>
+                <View style={styles.inputContainer}>
                   <Text style={styles.inputLabel}>Observação</Text>
                   <TextInput 
                     style={[styles.input, styles.textArea]} 
                     value={editingSample.observation} 
                     onChangeText={text => setEditingSample({...editingSample, observation: text})} 
                     placeholder="Digite observações adicionais (opcional)" 
+                    placeholderTextColor={colors.textLight}
                     multiline 
                     numberOfLines={3} 
                   />
                 </View>
                 
                 <View style={styles.modalActions}>
-                  <TouchableOpacity 
-                    style={styles.cancelButton} 
+                  <ModernButton
+                    title="Cancelar"
                     onPress={() => setEditModalVisible(false)}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancelar</Text>
-                  </TouchableOpacity>
+                    outline
+                    style={styles.cancelButton}
+                  />
                   
-                  <TouchableOpacity 
-                    style={styles.saveButton} 
+                  <ModernButton
+                    title="Salvar"
                     onPress={updateSample}
-                    disabled={isLoading}
-                  >
-                    {isLoading ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <Text style={styles.saveButtonText}>Salvar</Text>
-                    )}
-                  </TouchableOpacity>
+                    loading={isLoading}
+                    style={styles.confirmButton}
+                  />
                 </View>
               </ScrollView>
             )}
@@ -726,392 +874,178 @@ if (!addSampleMode) {
         </View>
       </Modal>
 
-      {/* Feedback visual */}
+      {/* Success Feedback */}
       {successFeedback && (
         <Animated.View style={[styles.successFeedback, { opacity: fadeAnim }]}>
-          <Feather name="check-circle" size={20} color="#fff" style={styles.feedbackIcon} />
+          <Feather name="check-circle" size={20} color={colors.white} style={styles.feedbackIcon} />
           <Text style={styles.successText}>Operação realizada com sucesso!</Text>
         </Animated.View>
       )}
-      {/* Modal de senha */}
-<Modal
-  visible={passwordModalVisible}
-  transparent={true}
-  animationType="slide"
-  onRequestClose={() => setPasswordModalVisible(false)}
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContainer}>
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Login do Projeto</Text>
-        <TouchableOpacity onPress={() => {
-          setPasswordModalVisible(false);
-          setPassword('');
-        }}>
-          <Feather name="x" size={24} color="#4b5563" />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.modalBody}>
-        <Text style={styles.projectIdText}>
-          Projeto: {projectId}
-        </Text>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Senha</Text>
-          <TextInput
-            style={styles.input}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Digite sua senha"
-            secureTextEntry
-          />
-        </View>
-        
-        <TouchableOpacity 
-          style={styles.forgotButton}
-          onPress={() => {
-            setPasswordModalVisible(false);
-            setForgotPasswordModalVisible(true);
-          }}
-        >
-          <Text style={styles.forgotButtonText}>Esqueceu sua senha?</Text>
-        </TouchableOpacity>
-        
-        <View style={styles.modalActions}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => {
-              setPasswordModalVisible(false);
-              setPassword('');
-            }}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={() => verifyPassword(password)}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <Text style={styles.loginButtonText}>Entrar</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  </View>
-</Modal>
 
-{/* Modal de recuperação de senha */}
-<Modal
-  visible={forgotPasswordModalVisible}
-  transparent={true}
-  animationType="slide"
-  onRequestClose={() => setForgotPasswordModalVisible(false)}
->
-  <View style={styles.modalOverlay}>
-    <View style={styles.modalContainer}>
-      <View style={styles.modalHeader}>
-        <Text style={styles.modalTitle}>Recuperar Senha</Text>
-        <TouchableOpacity onPress={() => setForgotPasswordModalVisible(false)}>
-          <Feather name="x" size={24} color="#4b5563" />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.modalBody}>
-        <Text style={styles.modalText}>
-          Digite o email associado ao projeto para receber um link de recuperação de senha.
-        </Text>
-        
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Email</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Digite seu email"
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-        </View>
-        
-        <View style={styles.modalActions}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => setForgotPasswordModalVisible(false)}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={() => {
-              // Implementar lógica de recuperação de senha
-              Alert.alert(
-                "Email enviado", 
-                "Instruções de recuperação de senha foram enviadas para o seu email."
-              );
-              setForgotPasswordModalVisible(false);
-            }}
-          >
-            <Text style={styles.loginButtonText}>Enviar</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
-  </View>
-</Modal>
-
-      {/* Modal do scanner */}
+      {/* Scanner Component */}
       {scannerVisible && (
         <BarCodeScanner 
           visible={scannerVisible}
           onClose={() => setScannerVisible(false)}
           onScan={handleBarCodeScanned}
-          hasPermission={hasPermission}
         />
       )}
-    </View>
-  ); // Fim do return do App
-} // Fim da função App
+    </SafeAreaView>
+  );
+}
 
-
+// Complete app styles
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#eef1f7',
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
+  background: {
+    flex: 1,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#1d4ed8',
-    paddingTop: 50,
-    paddingBottom: 15,
-    paddingHorizontal: 20
+    padding: 20,
   },
-  backButton: {
-    padding: 5
+  loginCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 5,
   },
-  headerTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold'
+  logo: {
+    width: 100,
+    height: 100,
+    resizeMode: 'contain',
+    marginBottom: 16,
   },
-  exitButton: {
-    padding: 5
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 4,
   },
-  authContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 20, 
-    backgroundColor: '#ffffff' 
+  subtitle: {
+    fontSize: 16,
+    color: colors.textLight,
+    marginBottom: 32,
   },
-  logo: { 
-    width: 400, 
-    height: 400, 
-    resizeMode: 'contain', 
-    marginBottom: 20 
-  },
-  title: { 
-    fontSize: 22, 
-    fontWeight: 'bold', 
-    color: '#1d4ed8', 
-    marginBottom: 20, 
-    textAlign: 'center' 
-  },
-  inputGroup: {
-    marginBottom: 16
+  inputContainer: {
+    width: '100%',
+    marginBottom: 16,
   },
   inputLabel: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#4b5563',
-    marginBottom: 6
+    fontWeight: '500',
+    color: colors.text,
+    marginBottom: 8,
   },
-  input: { 
-    width: '100%', 
-    borderWidth: 1, 
-    borderColor: '#d1d5db', 
-    backgroundColor: '#fff', 
-    padding: 12, 
-    borderRadius: 8,
+  input: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     fontSize: 16,
-    color: '#000000', // Adicionando cor preta explícita para o texto
-    textAlign: 'center' // Centralizando o texto para melhor visibilidade
+    color: colors.text,
+  },
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
   },
   scannerInputContainer: {
     flexDirection: 'row',
-    alignItems: 'center'
   },
   scannerInput: {
     flex: 1,
-    borderWidth: 1, 
-    borderColor: '#d1d5db', 
-    backgroundColor: '#fff', 
-    padding: 12, 
-    borderTopLeftRadius: 8,
-    borderBottomLeftRadius: 8,
-    fontSize: 16
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderTopLeftRadius: 12,
+    borderBottomLeftRadius: 12,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: colors.text,
   },
   scanButton: {
-    backgroundColor: '#1d4ed8',
-    padding: 14,
-    borderTopRightRadius: 8,
-    borderBottomRightRadius: 8
-  },
-  textArea: {
-    textAlignVertical: 'top',
-    minHeight: 80
-  },
-  button: { 
-    backgroundColor: '#1e3a8a', 
-    padding: 12, 
-    borderRadius: 8, 
-    alignItems: 'center', 
-    marginTop: 10, 
-    width: '100%' 
-  },
-  buttonText: { 
-    color: '#fff', 
-    fontWeight: 'bold' 
-  },
-  addButton: { 
-    backgroundColor: '#1d4ed8', 
-    padding: 14, 
-    borderRadius: 8, 
-    flexDirection: 'row',
-    alignItems: 'center', 
+    backgroundColor: colors.primary,
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
     justifyContent: 'center',
-    marginTop: 10
+    alignItems: 'center',
+    width: 50,
   },
-  addButtonText: { 
-    color: '#fff', 
+  loginButton: {
+    width: '100%',
+    marginTop: 8,
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 20,
     fontWeight: 'bold',
-    marginLeft: 8,
-    fontSize: 16
+    color: colors.primary,
+    marginBottom: 16,
   },
-  body: { 
-    padding: 20 
+  helpText: {
+    color: colors.textLight,
+    fontSize: 14,
+    marginBottom: 12,
+  },
+  addButton: {
+    marginTop: 16,
   },
   counterContainer: {
-    backgroundColor: '#fff',
-    padding: 15,
+    backgroundColor: colors.white,
+    padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb'
+    borderBottomColor: colors.border,
   },
   counterText: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#1d4ed8',
-  },
-  sampleListContainer: {
-    padding: 20,
-    paddingTop: 0
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 4,
-    color: '#1d4ed8',
-  },
-  helpText: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 10
-  },
-  sampleItem: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 15,
-    marginBottom: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  sampleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    paddingBottom: 8,
-  },
-  sampleId: {
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  sampleDetails: {
-    gap: 4,
-  },
-  labelText: {
-    fontWeight: 'bold',
-    color: '#4b5563',
-  },
-  dateText: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 4,
-    fontStyle: 'italic',
-  },
-  successFeedback: {
-    position: 'absolute',
-    bottom: 30,
-    left: 20,
-    right: 20,
-    backgroundColor: '#15803d',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  feedbackIcon: {
-    marginRight: 8
-  },
-  successText: {
-    color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  closeButton: {
-    position: 'absolute',
-    bottom: 40,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 30,
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  closeButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    marginLeft: 8
+    fontWeight: '600',
+    color: colors.primary,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    padding: 16,
   },
   modalContainer: {
-    width: '90%',
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 400,
     maxHeight: '80%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden'
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 5,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -1119,107 +1053,71 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb'
+    borderBottomColor: colors.border,
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1d4ed8'
+    color: colors.text,
   },
   modalBody: {
-    padding: 16
+    padding: 16,
   },
   modalSampleId: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: colors.primary,
     marginBottom: 16,
-    color: '#4b5563'
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: 20,
-    gap: 12
+    gap: 12,
+    marginTop: 24,
   },
   cancelButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d1d5db'
+    flex: 1,
   },
-  cancelButtonText: {
-    color: '#4b5563',
-    fontWeight: '600'
+  confirmButton: {
+    flex: 1,
   },
-  saveButton: {
-    backgroundColor: '#1d4ed8',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8
-  },
-  saveButtonText: {
-    color: '#fff',
+  projectIdText: {
+    fontSize: 16,
     fontWeight: 'bold',
-    fontSize: 16
+    color: colors.text,
+    marginBottom: 20,
   },
-  authScrollContainer: {
-    flexGrow: 1, 
-    justifyContent: 'center'
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginTop: 8,
+    marginBottom: 24,
   },
-  authContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    padding: 20, 
-    backgroundColor: '#ffffff' 
+  forgotButtonText: {
+    color: colors.primary,
+    fontSize: 14,
   },
-  logo: { 
-    width: 300, // Reduzindo o tamanho do logo para dar mais espaço
-    height: 300, 
-    resizeMode: 'contain', 
-    marginBottom: 0.001
-  },
-  actionButtons: {
+  successFeedback: {
+    position: 'absolute',
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: colors.success,
+    padding: 16,
+    borderRadius: 12,
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    shadowColor: colors.black,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
   },
-  actionButton: {
-    padding: 6,
+  feedbackIcon: {
+    marginRight: 12,
   },
-  // Estilos dos modais
-projectIdText: {
-  fontSize: 16,
-  fontWeight: 'bold',
-  marginBottom: 20,
-  color: '#4b5563'
-},
-forgotButton: {
-  alignSelf: 'flex-end',
-  marginTop: 4,
-  marginBottom: 16
-},
-forgotButtonText: {
-  color: '#1d4ed8',
-  fontSize: 14
-},
-loginButton: {
-  backgroundColor: '#1d4ed8',
-  paddingVertical: 12,
-  paddingHorizontal: 16,
-  borderRadius: 8,
-  alignItems: 'center',
-  justifyContent: 'center',
-  minWidth: 100
-},
-loginButtonText: {
-  color: '#fff',
-  fontWeight: 'bold',
-  fontSize: 16
-},
-modalText: {
-  color: '#4b5563',
-  marginBottom: 16,
-  lineHeight: 20
-}
+  successText: {
+    color: colors.white,
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
 });

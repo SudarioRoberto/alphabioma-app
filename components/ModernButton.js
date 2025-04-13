@@ -1,6 +1,7 @@
-// components/ModernButton.js
+// components/ModernButton.js - Updated button component
 import React from 'react';
-import { TouchableOpacity, Text, View, StyleSheet } from 'react-native';
+import { TouchableOpacity, Text, View, StyleSheet, ActivityIndicator } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import colors from '../styles/colors';
 
 const ModernButton = ({ 
@@ -8,51 +9,123 @@ const ModernButton = ({
   title, 
   icon, 
   style, 
-  primary = false 
-}) => (
-  <TouchableOpacity 
-    onPress={onPress} 
-    style={[
-      styles.modernButton, 
-      primary ? styles.primaryButton : styles.secondaryButton,
-      style
-    ]}
-  >
-    {icon && <View style={styles.buttonIconContainer}>{icon}</View>}
-    <Text style={styles.modernButtonText}>{title}</Text>
-  </TouchableOpacity>
-);
+  textStyle,
+  primary = true,
+  outline = false,
+  loading = false,
+  disabled = false
+}) => {
+  if (outline) {
+    return (
+      <TouchableOpacity 
+        onPress={onPress} 
+        style={[
+          styles.button,
+          styles.outlineButton,
+          disabled && styles.disabledOutlineButton,
+          style
+        ]}
+        disabled={disabled || loading}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.primary} />
+        ) : (
+          <View style={styles.buttonContent}>
+            {icon && <View style={styles.iconContainer}>{icon}</View>}
+            <Text style={[
+              styles.buttonText, 
+              styles.outlineButtonText,
+              disabled && styles.disabledOutlineButtonText,
+              textStyle
+            ]}>
+              {title}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  }
+
+  return (
+    <TouchableOpacity 
+      onPress={onPress} 
+      style={[styles.button, style]}
+      disabled={disabled || loading}
+    >
+      <LinearGradient
+        colors={primary 
+          ? disabled 
+            ? ['#a0aec0', '#718096'] 
+            : [colors.primary, colors.primaryDark]
+          : disabled 
+            ? ['#a0aec0', '#718096'] 
+            : [colors.secondary, colors.accent]
+        }
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={[styles.gradient, disabled && styles.disabledGradient]}
+      >
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.white} />
+        ) : (
+          <View style={styles.buttonContent}>
+            {icon && <View style={styles.iconContainer}>{icon}</View>}
+            <Text style={[styles.buttonText, textStyle]}>{title}</Text>
+          </View>
+        )}
+      </LinearGradient>
+    </TouchableOpacity>
+  );
+};
 
 const styles = StyleSheet.create({
-  modernButton: {
+  button: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: colors.primaryDark,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  gradient: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  disabledGradient: {
+    opacity: 0.7,
+  },
+  buttonContent: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  primaryButton: {
-    backgroundColor: colors.primary,
-  },
-  secondaryButton: {
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: colors.lightGray,
-  },
-  modernButtonText: {
+  buttonText: {
     color: colors.white,
     fontWeight: '600',
     fontSize: 16,
   },
-  buttonIconContainer: {
-    marginRight: 8,
-  }
+  iconContainer: {
+    marginRight: 10,
+  },
+  outlineButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  disabledOutlineButton: {
+    borderColor: '#a0aec0',
+  },
+  outlineButtonText: {
+    color: colors.primary,
+  },
+  disabledOutlineButtonText: {
+    color: '#a0aec0',
+  },
 });
 
 export default ModernButton;

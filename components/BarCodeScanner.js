@@ -1,7 +1,9 @@
+// Updated BarCodeScanner.js
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
-import { CameraView, Camera, useCameraPermissions } from 'expo-camera';
+import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Feather } from '@expo/vector-icons';
+import colors from '../styles/colors';
 
 const BarCodeScanner = ({ visible, onClose, onScan }) => {
   const [permission, requestPermission] = useCameraPermissions();
@@ -22,10 +24,9 @@ const BarCodeScanner = ({ visible, onClose, onScan }) => {
   };
 
   if (!permission) {
-    // Permissões ainda estão carregando
     return (
       <View style={styles.container}>
-        <Text>Carregando permissões da câmera...</Text>
+        <Text style={styles.statusText}>Carregando permissões da câmera...</Text>
       </View>
     );
   }
@@ -33,9 +34,9 @@ const BarCodeScanner = ({ visible, onClose, onScan }) => {
   if (!permission.granted) {
     return (
       <View style={styles.container}>
-        <Text>Precisamos de permissão para acessar a câmera</Text>
+        <Text style={styles.statusText}>Precisamos de permissão para acessar a câmera</Text>
         <TouchableOpacity onPress={requestPermission} style={styles.permissionButton}>
-          <Text>Permitir Acesso</Text>
+          <Text style={styles.permissionButtonText}>Permitir Acesso</Text>
         </TouchableOpacity>
       </View>
     );
@@ -43,26 +44,33 @@ const BarCodeScanner = ({ visible, onClose, onScan }) => {
 
   return (
     <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor={colors.black} />
       <CameraView
         style={styles.camera}
         facing="back"
         barcodeScannerSettings={{
-          barcodeTypes: ['qr', 'pdf417', 'ean13', 'code128'],
+          barcodeTypes: ['qr', 'pdf417', 'ean13', 'code128', 'datamatrix'],
         }}
         onBarcodeScanned={!scanned ? handleBarCodeScanned : undefined}
       >
         <View style={styles.overlay}>
-          <View style={styles.scanBox} />
+          <View style={styles.scanArea}>
+            <View style={styles.cornerTL} />
+            <View style={styles.cornerTR} />
+            <View style={styles.cornerBL} />
+            <View style={styles.cornerBR} />
+          </View>
+          <Text style={styles.scanText}>Posicione o código de barras dentro da área</Text>
         </View>
+        
+        <TouchableOpacity 
+          onPress={onClose} 
+          style={styles.closeButton}
+        >
+          <Feather name="x-circle" size={24} color={colors.white} />
+          <Text style={styles.closeButtonText}>Cancelar</Text>
+        </TouchableOpacity>
       </CameraView>
-      
-      <TouchableOpacity 
-        onPress={onClose} 
-        style={styles.closeButton}
-      >
-        <Feather name="x-circle" size={24} color="#fff" />
-        <Text style={styles.closeButtonText}>Cancelar</Text>
-      </TouchableOpacity>
     </View>
   );
 };
@@ -75,24 +83,74 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'black'
+    backgroundColor: colors.black,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   camera: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center'
+    width: '100%',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
   },
-  scanBox: {
+  scanArea: {
     width: 250,
     height: 250,
     borderWidth: 2,
-    borderColor: 'white',
-    backgroundColor: 'transparent'
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
+    position: 'relative',
+  },
+  cornerTL: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 30,
+    height: 30,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+    borderColor: colors.primary,
+  },
+  cornerTR: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 30,
+    height: 30,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+    borderColor: colors.primary,
+  },
+  cornerBL: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: 30,
+    height: 30,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+    borderColor: colors.primary,
+  },
+  cornerBR: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 30,
+    height: 30,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+    borderColor: colors.primary,
+  },
+  scanText: {
+    color: colors.white,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 20,
+    fontWeight: '500',
   },
   closeButton: {
     position: 'absolute',
@@ -103,19 +161,30 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 30,
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   closeButtonText: {
-    color: '#fff',
+    color: colors.white,
     fontWeight: 'bold',
-    marginLeft: 8
+    marginLeft: 8,
+  },
+  statusText: {
+    color: colors.white,
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 20,
   },
   permissionButton: {
-    backgroundColor: '#2196F3',
-    padding: 10,
-    borderRadius: 5,
-    marginTop: 10
-  }
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+  },
+  permissionButtonText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
 
 export default BarCodeScanner;
