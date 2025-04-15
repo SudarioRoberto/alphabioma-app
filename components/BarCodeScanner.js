@@ -1,4 +1,4 @@
-// Updated BarCodeScanner.js
+// components/BarCodeScanner.js - Simplified version
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -10,38 +10,62 @@ const BarCodeScanner = ({ visible, onClose, onScan }) => {
   const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      await requestPermission();
-    })();
-  }, []);
+    if (visible) {
+      // Reset scan state when opening
+      setScanned(false);
+      // Request permissions
+      requestPermission();
+    }
+  }, [visible]);
 
   if (!visible) return null;
 
   const handleBarCodeScanned = ({ type, data }) => {
+    if (scanned) return;
     setScanned(true);
-    onScan({ type, data });
-    onClose();
+    
+    // Call the callback with scan data
+    if (onScan) {
+      onScan({ type, data });
+    }
+    
+    // Close scanner after successful scan
+    if (onClose) {
+      onClose();
+    }
   };
 
-  if (!permission) {
+  // Handle permissions not granted
+  if (!permission?.granted) {
     return (
       <View style={styles.container}>
-        <Text style={styles.statusText}>Carregando permissões da câmera...</Text>
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.statusText}>Precisamos de permissão para acessar a câmera</Text>
-        <TouchableOpacity onPress={requestPermission} style={styles.permissionButton}>
-          <Text style={styles.permissionButtonText}>Permitir Acesso</Text>
+        <Text style={styles.statusText}>
+          {permission === undefined 
+            ? "Carregando permissões da câmera..." 
+            : "Precisamos de permissão para acessar a câmera"}
+        </Text>
+        
+        {permission !== undefined && (
+          <TouchableOpacity 
+            onPress={requestPermission} 
+            style={styles.permissionButton}
+          >
+            <Text style={styles.permissionButtonText}>Permitir Acesso</Text>
+          </TouchableOpacity>
+        )}
+        
+        <TouchableOpacity 
+          onPress={onClose} 
+          style={[styles.closeButton, {marginTop: 20}]}
+        >
+          <Feather name="x-circle" size={24} color={colors.white} />
+          <Text style={styles.closeButtonText}>Cancelar</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
+  // Main scanner view
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.black} />
@@ -86,6 +110,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.black,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 999,
   },
   camera: {
     flex: 1,

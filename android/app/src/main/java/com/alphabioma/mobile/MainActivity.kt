@@ -1,4 +1,4 @@
-package com.sudario.alphabioma
+package com.alphabioma.mobile
 
 import android.os.Build
 import android.os.Bundle

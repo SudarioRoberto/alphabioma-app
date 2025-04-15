@@ -55,7 +55,7 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [forgotPasswordModalVisible, setForgotPasswordModalVisible] = useState(false);
   const [processingLogin, setProcessingLogin] = useState(false);
-  
+  const [scanTarget, setScanTarget] = useState(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -520,18 +520,30 @@ export default function App() {
   };
 
   const handleBarCodeScanned = ({ type, data }) => {
-    setScannerVisible(false);
-    if (editModalVisible && editingSample) {
-      setEditingSample({...editingSample, sampleId: data});
+    console.log(`Barcode with type ${type} and data ${data} has been scanned!`);
+    
+    if (scanTarget === 'editSample' && editingSample) {
+      setEditingSample({...editingSample, id: data});
     } else {
+      // Default to newSample
       setNewSample(prev => ({ ...prev, sampleId: data }));
     }
+    
+    // Close scanner after successful scan
+    setScannerVisible(false);
   };
 
   const openEditModal = (sample) => {
     setEditingSample({...sample});
     setEditModalVisible(true);
   };
+
+  const openScanner = (target) => {
+    setScanTarget(target);
+    setScannerVisible(true);
+  };
+
+  
   
   const logout = async () => {
     try {
@@ -573,7 +585,7 @@ export default function App() {
               keyboardShouldPersistTaps="handled"
             >
               <View style={styles.loginCard}>
-                <Image source={require('./assets/icon.png')} style={styles.logo} />
+                <Image source={require('./assets/logo.png')} style={styles.logo} />
                 <Text style={styles.title}>AlphaBioma</Text>
                 <Text style={styles.subtitle}>Portal do Cliente</Text>
                 
@@ -731,7 +743,7 @@ export default function App() {
                 placeholder="Escaneie ou digite o ID" 
                 placeholderTextColor={colors.textLight}
               />
-              <TouchableOpacity onPress={() => setScannerVisible(true)} style={styles.scanButton}>
+              <TouchableOpacity onPress={() => openScanner('newSample')} style={styles.scanButton}>
                 <Feather name="camera" size={20} color={colors.white} />
               </TouchableOpacity>
             </View>
@@ -809,9 +821,12 @@ export default function App() {
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Editar Amostra</Text>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Feather name="x" size={24} color={colors.text} />
-              </TouchableOpacity>
+              <TouchableOpacity 
+  onPress={() => setScannerVisible(true)} 
+  style={styles.scanButton}
+>
+  <Feather name="camera" size={20} color={colors.white} />
+</TouchableOpacity>
             </View>
             
             {editingSample && (
@@ -877,12 +892,12 @@ export default function App() {
 
       {/* Scanner Component */}
       {scannerVisible && (
-        <BarCodeScanner 
-          visible={scannerVisible}
-          onClose={() => setScannerVisible(false)}
-          onScan={handleBarCodeScanned}
-        />
-      )}
+  <BarCodeScanner
+    visible={scannerVisible}
+    onClose={() => setScannerVisible(false)}
+    onScan={handleBarCodeScanned}
+  />
+)}
     </SafeAreaView>
   );
 }
@@ -924,10 +939,10 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   logo: {
-    width: 100,
-    height: 100,
-    resizeMode: 'contain',
-    marginBottom: 16,
+      width: 160,     // Increase this value
+      height: 160,    // Increase this value
+      resizeMode: 'contain',
+      marginBottom: 5
   },
   title: {
     fontSize: 24,
