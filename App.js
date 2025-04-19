@@ -7,8 +7,7 @@ import {
   View, 
   TextInput, 
   FlatList, 
-  TouchableOpacity, 
-  Image, 
+  TouchableOpacity,
   Modal, 
   ActivityIndicator, 
   ScrollView, 
@@ -61,15 +60,46 @@ export default function App() {
   useEffect(() => {
     loadSamples();
     checkExistingSession();
-    
-    const unsubscribe = NetInfo.addEventListener(state => {
+  
+    const unsubscribeNetInfo = NetInfo.addEventListener(state => {
       if (state.isConnected) {
         syncUnsyncedSamples();
       }
     });
-    
-    return () => unsubscribe();
+  
+    return () => {
+      unsubscribeNetInfo();
+    };
   }, []);
+
+useEffect(() => {
+  if (!realProjectId) return;
+
+  console.log('🔔 Subscribing to realtime updates for:', realProjectId);
+
+  const channel = supabase
+    .channel(`samples-realtime-${realProjectId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*', // ou apenas 'INSERT'
+        schema: 'public',
+        table: 'generic_samples',
+        filter: `project_id=eq.${realProjectId}`
+      },
+      payload => {
+        console.log('📡 Nova atualização recebida:', payload);
+        loadProjectSamples(realProjectId); // atualiza as amostras no app
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}, [realProjectId]);
+
+
   
   const checkExistingSession = async () => {
     try {

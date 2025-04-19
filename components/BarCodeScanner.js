@@ -1,4 +1,4 @@
-// components/BarCodeScanner.js - Simplified version
+// Updated BarCodeScanner.js 
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -8,34 +8,47 @@ import colors from '../styles/colors';
 const BarCodeScanner = ({ visible, onClose, onScan }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(0);
 
-  useEffect(() => {
-    if (visible) {
-      // Reset scan state when opening
-      setScanned(false);
-      // Request permissions
-      requestPermission();
-    }
-  }, [visible]);
 
-  if (!visible) return null;
+// Aumentar zoom gradualmente para facilitar leitura de códigos pequenos
+useEffect(() => {
+  if (visible) {
+    setScanned(false);
+    requestPermission();
+    // Começar com zoom baixo e aumentar gradualmente
+    setZoomLevel(0);
+    const zoomInterval = setInterval(() => {
+      setZoomLevel(prev => {
+        const newZoom = prev + 0.05;
+        return newZoom > 0.2 ? 0 : newZoom; 
+      });
+    }, 1500);
+    
+    return () => clearInterval(zoomInterval);
+  }
+}, [visible]);
+
+if (!visible) return null;
 
   const handleBarCodeScanned = ({ type, data }) => {
     if (scanned) return;
     setScanned(true);
     
-    // Call the callback with scan data
     if (onScan) {
       onScan({ type, data });
     }
     
-    // Close scanner after successful scan
     if (onClose) {
       onClose();
     }
   };
 
-  // Handle permissions not granted
+  const toggleTorch = () => {
+    setTorchOn(!torchOn);
+  };
+
   if (!permission?.granted) {
     return (
       <View style={styles.container}>
@@ -65,19 +78,20 @@ const BarCodeScanner = ({ visible, onClose, onScan }) => {
     );
   }
 
-  // Main scanner view
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.black} />
       <CameraView
         style={styles.camera}
         facing="back"
+        zoom={zoomLevel}
         barcodeScannerSettings={{
-          barcodeTypes: ['qr', 'pdf417', 'ean13', 'code128', 'datamatrix'],
+          barcodeTypes: [ 'datamatrix'],
+          detectorMode: 'accurate',
         }}
         onBarcodeScanned={!scanned ? handleBarCodeScanned : undefined}
       >
-        <View style={styles.overlay}>
+        <View style={styles.scanOverlay}>
           <View style={styles.scanArea}>
             <View style={styles.cornerTL} />
             <View style={styles.cornerTR} />
@@ -85,15 +99,28 @@ const BarCodeScanner = ({ visible, onClose, onScan }) => {
             <View style={styles.cornerBR} />
           </View>
           <Text style={styles.scanText}>Posicione o código de barras dentro da área</Text>
+          <Text style={styles.zoomText}>Zoom: {Math.round(zoomLevel * 100)}%</Text>
         </View>
         
-        <TouchableOpacity 
-          onPress={onClose} 
-          style={styles.closeButton}
-        >
-          <Feather name="x-circle" size={24} color={colors.white} />
-          <Text style={styles.closeButtonText}>Cancelar</Text>
-        </TouchableOpacity>
+        <View style={styles.controlsContainer}>
+          <TouchableOpacity 
+            onPress={toggleTorch} 
+            style={styles.torchButton}
+          >
+            <Feather name={torchOn ? "zap-off" : "zap"} size={24} color={colors.white} />
+            <Text style={styles.buttonText}>
+              {torchOn ? "Desligar Flash" : "Ligar Flash"}
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={styles.closeButton}
+          >
+            <Feather name="x-circle" size={24} color={colors.white} />
+            <Text style={styles.closeButtonText}>Cancelar</Text>
+          </TouchableOpacity>
+        </View>
       </CameraView>
     </View>
   );
@@ -116,11 +143,11 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
-  overlay: {
+  scanOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.3)', // Made more transparent
   },
   scanArea: {
     width: 250,
@@ -176,11 +203,35 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     fontWeight: '500',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
   },
-  closeButton: {
+  zoomText: {
+    color: colors.white,
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  controlsContainer: {
     position: 'absolute',
     bottom: 40,
-    alignSelf: 'center',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+  },
+  closeButton: {
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  torchButton: {
     backgroundColor: 'rgba(0,0,0,0.7)',
     paddingVertical: 12,
     paddingHorizontal: 20,
@@ -189,6 +240,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeButtonText: {
+    color: colors.white,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  buttonText: {
     color: colors.white,
     fontWeight: 'bold',
     marginLeft: 8,
